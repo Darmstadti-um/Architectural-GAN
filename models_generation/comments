@@ -1,0 +1,4 @@
+Generating train data
+Structure:
+   |X coord     | Y cord     | Z cord     | S(m^2)| floors| numb.plasec| S(gec)|
+obj| 1, 1...    | 1, 1...    | 1, 1...    | 123   | 222   | 2          | 222   |
