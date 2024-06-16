@@ -1,0 +1,9 @@
+python==3.10
+utils==1.0.2
+ctgan==0.10.1
+ifcopenshell==0.7.0.240521
+torch==2.3.0
+numpy_stl==3.1.1
+tqdm>=4.57.0
+numpy>=1.21.0
+pandas==2.0.3
