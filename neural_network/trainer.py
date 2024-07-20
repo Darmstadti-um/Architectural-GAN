@@ -1,9 +1,14 @@
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 import torch
 from torch import optim
 from torch import nn
 from utils import *
 import os
 
+from model import net_G, net_D
+
+# added
 import datetime
 import time
 from tensorboardX import SummaryWriter
@@ -39,13 +44,12 @@ def save_val_log(writer, loss_D, loss_G, itr):
 
 def trainer(args):
     save_file_path = params.output_dir + '/' + args.model_name
-    print(save_file_path)  # ../outputs/dcgan
+    print(save_file_path)
     if not os.path.exists(save_file_path):
         os.makedirs(save_file_path)
 
     if args.logs:
         model_uid = datetime.datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-        # writer = SummaryWriter(params.output_dir+'/'+args.model_name+'/'+model_uid+'_'+args.logs+'/logs')
         writer = SummaryWriter(params.output_dir + '/' + args.model_name + '/' + args.logs + '/logs')
 
         image_saved_path = params.output_dir + '/' + args.model_name + '/' + args.logs + '/images'
@@ -56,39 +60,29 @@ def trainer(args):
         if not os.path.exists(model_saved_path):
             os.makedirs(model_saved_path)
 
-    # datset define
-    # dsets_path = args.input_dir + args.data_dir + "train/"
     dsets_path = params.data_dir + params.model_dir + "30/train/"
-    # if params.cube_len == 64:
-    #     dsets_path = params.data_dir + params.model_dir + "30/train64/"
 
-  #  print(dsets_path)  # ../volumetric_data/chair/30/train/
 
-    train_dsets = ShapeNetDataset(dsets_path, args, "train")
-    # val_dsets = ShapeNetDataset(dsets_path, args, "val")
+    print(dsets_path)
+
+    train_dsets = Dataset(dsets_path, args, "train")
 
     train_dset_loaders = torch.utils.data.DataLoader(train_dsets, batch_size=params.batch_size, shuffle=True,
                                                      num_workers=1)
-    # val_dset_loaders = torch.utils.data.DataLoader(val_dsets, batch_size=args.batch_size, shuffle=True, num_workers=1)
 
     dset_len = {"train": len(train_dsets)}
     dset_loaders = {"train": train_dset_loaders}
-    # print (dset_len["train"])
 
-    # model define
     D = net_D(args)
     G = net_G(args)
 
 
-
     D_solver = optim.Adam(D.parameters(), lr=params.d_lr, betas=params.beta)
-    # D_solver = optim.SGD(D.parameters(), lr=args.d_lr, momentum=0.9)
     G_solver = optim.Adam(G.parameters(), lr=params.g_lr, betas=params.beta)
 
     D.to(params.device)
     G.to(params.device)
 
-    # criterion_D = nn.BCELoss()
     criterion_D = nn.MSELoss()
 
     criterion_G = nn.L1Loss()
@@ -102,8 +96,7 @@ def trainer(args):
 
         for phase in ['train']:
             if phase == 'train':
-                # if args.lrsh:
-                #     D_scheduler.step()
+
                 D.train()
                 G.train()
             else:
@@ -116,21 +109,16 @@ def trainer(args):
 
             for i, X in enumerate(tqdm(dset_loaders[phase])):
 
-                # if phase == 'val':
-                #     itr_val += 1
-
                 if phase == 'train':
                     itr_train += 1
 
                 X = X.to(params.device)
-
 
                 batch = X.size()[0]
 
                 Z = generateZ(args, batch)
 
 
-                # ============= Train the discriminator =============#
                 d_real = D(X)
 
                 fake = G(Z)
@@ -138,13 +126,11 @@ def trainer(args):
 
                 real_labels = torch.ones_like(d_real).to(params.device)
                 fake_labels = torch.zeros_like(d_fake).to(params.device)
-                # print (d_fake.size(), fake_labels.size())
 
                 if params.soft_label:
                     real_labels = torch.Tensor(batch).uniform_(0.7, 1.2).to(params.device)
                     fake_labels = torch.Tensor(batch).uniform_(0, 0.3).to(params.device)
 
-                # print (d_real.size(), real_labels.size())
                 d_real_loss = criterion_D(d_real, real_labels)
 
                 d_fake_loss = criterion_D(d_fake, fake_labels)
@@ -161,12 +147,10 @@ def trainer(args):
                     d_loss.backward()
                     D_solver.step()
 
-                # =============== Train the generator ===============#
 
                 Z = generateZ(args, batch)
 
-
-                fake = G(Z)  # generated fake: 0-1, X: 0/1
+                fake = G(Z)
                 d_fake = D(fake)
 
                 adv_g_loss = criterion_D(d_fake, real_labels)
@@ -183,7 +167,6 @@ def trainer(args):
                 G.zero_grad()
                 g_loss.backward()
                 G_solver.step()
-
 
 
                 running_loss_G += recon_g_loss.item() * X.size(0)
@@ -206,7 +189,6 @@ def trainer(args):
                     if itr_train % 10 == 0 and phase == 'train':
                         save_train_log(writer, loss_D, loss_G, itr_train)
 
-
             epoch_loss_G = running_loss_G / dset_len[phase]
             epoch_loss_D = running_loss_D / dset_len[phase]
             epoch_loss_adv_G = running_loss_adv_G / dset_len[phase]
@@ -223,5 +205,6 @@ def trainer(args):
                 torch.save(D.state_dict(), model_saved_path + '/D.pth')
 
                 samples = fake.cpu().data[:8].squeeze().numpy()
+
 
                 SavePloat_Voxels(samples, image_saved_path, epoch)
